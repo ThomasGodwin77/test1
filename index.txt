@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird Clone</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(to bottom, #87CEEB, #B0E0E6);
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            border: 2px solid #fff;
+        }
+        #gameOverPanel, #mainMenu, #popup {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 2px solid yellow;
+            padding: 20px;
+            text-align: center;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            font-size: 48px;
+            color: white;
+            text-shadow: 2px 2px 4px black;
+            margin: 0;
+        }
+        .button {
+            margin: 10px;
+            padding: 10px 20px;
+            background-color: #87CEEB;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 18px;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+            transition: background-color 0.3s;
+        }
+        .button:hover {
+            background-color: #6EC6E3;
+        }
+        .pause-text {
+            font-size: 30px;
+            color: red;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+<div id="mainMenu">
+    <h1>Flappy Bird</h1>
+    <button id="startBtn" class="button">Старт</button>
+</div>
+<div id="gameOverPanel">
+    <h2>Игра окончена</h2>
+    <p>Ваш счет: <span id="scoreDisplay"></span></p>
+    <p>Рекорд: <span id="highScoreDisplay"></span></p>
+    <button id="restartBtn" class="button">Начать сначала</button>
+    <button id="menuBtn" class="button">Меню</button>
+</div>
+<div class="pause-text" id="pauseText" style="display: none;">Пауза</div>
+
+<div id="popup" class="popup">
+    <div class="popup-content">
+        <span class="close" id="closePopup">&times;</span>
+        <h2>Информация об игре</h2>
+        <p>Это простая версия игры Flappy Bird.</p>
+        <button id="confirm" class="button">Закрыть</button>
+    </div>
+</div>
+
+<script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+
+<script>
+  vkBridge.send("VKWebAppInit", {});
+</script>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const PIPE_WIDTH = 30; // Ширина труб
+    const GAP = 150; // Расстояние между верхней и нижней трубой
+
+    let bird = { x: 50, y: 150, width: 42, height: 42, gravity: 0.2, lift: -5, velocity: 0 };
+    let pipes = [];
+    let score = 0;
+    let highScore = 0;
+    let isGameOver = false;
+    let isPaused = false;
+
+    // Загрузка изображений
+    const birdImage = new Image();
+    birdImage.src = 'bird.png'; // Загрузка изображения птицы
+
+    const backgroundImage = new Image();
+    backgroundImage.src = 'background.png'; // Загрузка изображения фона
+
+    function drawBackground() {
+        ctx.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+    }
+
+    function addPipe() {
+        const topPipeHeight = Math.floor(Math.random() * (canvas.height - GAP - 50)); 
+        pipes.push({
+            top: { x: canvas.width, y: 0, width: PIPE_WIDTH, height: topPipeHeight },
+            bottom: { x: canvas.width, y: topPipeHeight + GAP, width: PIPE_WIDTH, height: canvas.height - topPipeHeight - GAP }
+        });
+    }
+
+    function drawBird() {
+        ctx.drawImage(birdImage, bird.x, bird.y, bird.width, bird.height);
+    }
+
+
+    const TIP_WIDTH = 41; // Ширина наконечников
+    const RADIUS = 5; // Радиус закругления
+
+    function drawPipes() {
+        pipes.forEach(pipe => {
+            // Рисуем верхнюю трубу
+            ctx.fillStyle = 'green'; // Цвет трубы
+            ctx.fillRect(pipe.top.x, pipe.top.y, PIPE_WIDTH, pipe.top.height);
+            ctx.strokeStyle = 'black'; // Цвет контура
+            ctx.strokeRect(pipe.top.x, pipe.top.y, PIPE_WIDTH, pipe.top.height);
+            
+            // Наконечник вниз от верхней трубы
+            ctx.fillStyle = 'green'; // Цвет наконечника
+            drawRoundedRect(pipe.top.x + (PIPE_WIDTH - TIP_WIDTH) / 2, pipe.top.y + pipe.top.height - 20, TIP_WIDTH, 20, RADIUS); // Наконечник вниз
+
+            // Рисуем нижнюю трубу
+            ctx.fillStyle = 'green'; // Цвет трубы
+            ctx.fillRect(pipe.bottom.x, pipe.bottom.y, PIPE_WIDTH, pipe.bottom.height);
+            ctx.strokeRect(pipe.bottom.x, pipe.bottom.y, PIPE_WIDTH, pipe.bottom.height);
+            
+            // Наконечник над нижней трубой
+            ctx.fillStyle = 'green'; // Цвет наконечника
+            drawRoundedRect(pipe.bottom.x + (PIPE_WIDTH - TIP_WIDTH) / 2, pipe.bottom.y - 20, TIP_WIDTH, 20, RADIUS); // Наконечник над нижней трубой
+        });
+    }
+
+    function drawRoundedRect(x, y, width, height, radius) {
+        ctx.fillStyle = 'green'; // Цвет можно поменять, если нужно
+        ctx.strokeStyle = 'black'; // Цвет контура
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    function update() {
+        if (isPaused) return;
+
+        bird.velocity += bird.gravity;
+        bird.y += bird.velocity;
+
+        if (bird.y + bird.height >= canvas.height) {
+            bird.y = canvas.height - bird.height;
+            endGame();
+        }
+
+        pipes.forEach(pipe => {
+            pipe.top.x -= 1.5;
+            pipe.bottom.x -= 1.5;
+
+            if (pipe.top.x + pipe.top.width < 0) {
+                pipes.shift();
+                score++;
+            }
+
+            // Проверка столкновения
+            if (
+                bird.x < pipe.top.x + pipe.top.width &&
+                bird.x + bird.width > pipe.top.x &&
+                (bird.y < pipe.top.height || bird.y + bird.height > pipe.bottom.y)
+            ) {
+                endGame();
+            }
+        });
+
+        if (pipes.length === 0 || pipes[pipes.length - 1].top.x < canvas.width - 250) {
+            addPipe();
+        }
+    }
+
+    function endGame() {
+        isGameOver = true;
+        if (score > highScore) {
+            highScore = score;
+        }
+        document.getElementById('scoreDisplay').innerText = score;
+        document.getElementById('highScoreDisplay').innerText = highScore;
+        document.getElementById('gameOverPanel').style.display = 'block';
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBackground();
+        drawBird();
+        drawPipes();
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.strokeText(`Счет: ${score}`, 10, 25);
+        ctx.fillText(`Счет: ${score}`, 10, 25);
+        
+        if (isPaused) {
+            document.getElementById('pauseText').style.display = 'block';
+        } else {
+            document.getElementById('pauseText').style.display = 'none';
+        }
+    }
+
+    function gameLoop() {
+        if (!isGameOver) {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+    }
+
+    // Обработка нажатий клавиш
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'p') { // Пауза
+            isPaused = !isPaused;
+            if (!isPaused && !isGameOver) {
+                gameLoop();
+            }
+        }
+
+        // Прыжок птички
+        if (!isGameOver && !isPaused && event.key === ' ') { 
+            bird.velocity = bird.lift; 
+        }
+    });
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+        resetGame();
+        document.getElementById('mainMenu').style.display = 'none';
+        gameLoop();
+    });
+
+    document.getElementById('restartBtn').addEventListener('click', () => {
+        resetGame();
+        document.getElementById('gameOverPanel').style.display = 'none';
+        gameLoop();
+    });
+
+    document.getElementById('menuBtn').addEventListener('click', () => {
+        resetGame();
+        document.getElementById('gameOverPanel').style.display = 'none';
+        document.getElementById('mainMenu').style.display = 'block';
+    });
+    
+    document.getElementById('closePopup').addEventListener('click', () => {
+        document.getElementById('popup').style.display = 'none';
+    });
+
+    document.getElementById('confirm').addEventListener('click', () => {
+        document.getElementById('popup').style.display = 'none';
+    });
+
+    function resetGame() {
+        pipes = [];
+        score = 0;
+        bird.y = 150;
+        bird.velocity = 0;
+        isGameOver = false;
+        isPaused = false;
+        document.getElementById('gameOverPanel').style.display = 'none';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBackground();
+        document.getElementById('pauseText').style.display = 'none';
+    }
+
+    document.getElementById('mainMenu').style.display = 'block';
+
+    // Добавление кнопки, чтобы показать информацию об игре
+    document.addEventListener('keydown', (event) => {
+        // Отобразить всплывающее окно с информацией
+        if (event.key === 'i') { // Нажмите 'i' для информации
+            document.getElementById('popup').style.display = 'block';
+        }
+    });
+</script>
+</body>
+</html>
